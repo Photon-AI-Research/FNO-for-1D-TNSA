@@ -35,7 +35,7 @@ torch.manual_seed(42)
 np.random.seed(42)
 
 hyperparameter_defaults = dict(
-    modes = 192,
+    modes = 120,
     width = 5,
     epochs = 500,
     learning_rate = 0.001,
@@ -44,6 +44,7 @@ hyperparameter_defaults = dict(
     batch_size = 1,
     tr_ratio = 0.8,
     std = 1,
+    tr_slice = 100,
     )
 
 # Pass your defaults to wandb.init
@@ -83,7 +84,7 @@ class SpectralConv2d_fast(nn.Module):
         batchsize = x.shape[0]
         #Compute Fourier coeffcients up to factor of e^(- something constant)
         x_ft = torch.fft.rfft2(x)
-        self.xfft = x_ft
+        # self.xfft = x_ft
         # Multiply relevant Fourier modes
         out_ft = torch.zeros(batchsize, self.out_channels,  x.size(-2), x.size(-1)//2 + 1, dtype=torch.cfloat, device=x.device)
         out_ft[:, :, :self.modes1, :self.modes2] = \
@@ -184,7 +185,7 @@ class FNO2d(nn.Module):
 #dataset = loadmat('ion_200_300.mat')
 #dataset = loadmat('DIR/beegfs/jeru889b-Smilei3/fno_1000.npy')
 
-dataset = np.load('/bigdata/hplsim/aipp/Jeyhun/fno_main/fno_2000.npy')
+dataset = np.load('/bigdata/hplsim/aipp/Jeyhun/fno_main/fno_721.npy')
 
 print(dataset.shape,'dataset')
 #x = dataset['x']
@@ -197,24 +198,26 @@ print(dataset.shape,'dataset')
 density = np.transpose(dataset, (0, 2, 3, 1))
 # d = dataset['d']
 print(density.shape,'dataset after')
-d_shape = density.shape[0]
+ntotal = density.shape[0]
 
 # ntrain = 80
 # ntest = 20
 T_in = 1
 T = 10 
-NN = 2000
 
 # ###### interpolation #########
 tr_ratio = config["tr_ratio"]
-total_index = np.arange(0,d_shape,1)
-ntotal = d_shape
-ntrain= int(np.round(d_shape*tr_ratio))
+total_index = np.arange(0,ntotal,1)
+ntrain= int(np.round(ntotal*tr_ratio))
 ntest = ntotal-ntrain
-test_index = np.random.choice(NN, ntest, replace = False)
+test_index = np.random.choice(ntotal, ntest, replace = False)
+test_index = np.sort(test_index)
 print('test_index',test_index)
 print('test_index shape',test_index.shape)
 train_index = np.setxor1d(test_index, total_index)
+if config["tr_slice"]:
+    ntrain = config["tr_slice"]
+    train_index = np.random.choice(train_index, size=ntrain, replace=False)
 print('train_index.shape',train_index.shape)
 # ###### interpolation #########
 
