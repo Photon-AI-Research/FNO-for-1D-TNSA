@@ -47,8 +47,18 @@ hyperparameter_defaults = dict(
     tr_slice = 100,
     )
 
+temp_run_name = "temp_run"
 # Pass your defaults to wandb.init
-wandb.init(config=hyperparameter_defaults, project="FNO_project", name='FNO-test1')
+wandb.init(config=hyperparameter_defaults, project="FNO_project", name=temp_run_name)
+
+# Generate the run name dynamically with wandb run id
+run_id = wandb.run.id
+run_name = f"m{hyperparameter_defaults['modes']}_w{hyperparameter_defaults['width']}_tr{hyperparameter_defaults['tr_slice']}_{run_id}"
+
+# Update the run name
+wandb.run.name = run_name
+wandb.run.save()
+
 # Access all hyperparameter values through wandb.config
 config = wandb.config
 
