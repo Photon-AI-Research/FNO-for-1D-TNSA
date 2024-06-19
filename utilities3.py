@@ -7,6 +7,10 @@ import torch.nn as nn
 import operator
 from functools import reduce
 from functools import partial
+import os
+import matplotlib.pyplot as plt
+from matplotlib.colors import LogNorm
+
 
 torch.manual_seed(42)
 np.random.seed(42)
@@ -437,3 +441,130 @@ def count_params(model):
         c += reduce(operator.mul, 
                     list(p.size()+(2,) if p.is_complex() else p.size()))
     return c
+
+
+
+def plot_phase_space(
+    prediction,
+    ground_truth,
+    d,
+    x,
+    px,
+    time_og,
+    save_path=None,
+    interpolation = False,
+):
+    """
+    Function to plot the predicted and ground truth phase space at a given time step.
+
+    Parameters:
+    prediction (numpy.ndarray): Predicted data array.
+    ground_truth (numpy.ndarray): Ground truth data array.
+    d : Target thickness values.
+    x : Positions
+    px : Momentum
+    time_og : Time values
+    save_path : Whether to save plot
+    interpolation : Whether we comparing ground_truth to interpolation
+    """
+
+    # create meshgrid from x, px values
+    X, PX = np.meshgrid(x, px)
+    extent = np.min(X), np.max(X), np.min(PX), np.max(PX)
+    time_og = np.round(time_og.reshape(-1),2)
+
+    myloss = LpLoss(size_average=False)
+
+    myloss_l1 = LpLoss(size_average=False, p=1)
+
+    for tt in range(10):
+        pred = prediction[..., tt]
+        gt_og = ground_truth[..., tt]
+
+        l1 = torch.abs(pred - gt_og)
+        rel_l1 = myloss_l1(pred.reshape(1, -1), gt_og.reshape(1, -1)).item()
+        test_l2_full = myloss(pred.reshape(1, -1), gt_og.reshape(1, -1)).item()
+
+        fig = plt.figure(figsize=(10, 20))
+
+        # Adds subplot on position 1
+        ax2 = fig.add_subplot(311)
+
+        # Adds subplot on position 2
+        ax = fig.add_subplot(312)
+
+        # Adds subplot on position 3
+        ax3 = fig.add_subplot(313)
+
+        ########### model prediction ###############
+        # pred_main = pred[i, t, :, :]
+        # gt_main = gt_og[i, t, :, :]
+    #     threshold = 0
+
+    #     pred_main = np.where(pred_main < threshold, 0, pred_main)
+
+        cp = ax.imshow(pred.T,
+                       interpolation='nearest',
+                       cmap='YlGnBu',
+                       origin='lower',
+                       extent=extent,
+                       aspect='auto',
+                       norm=LogNorm(vmin=1e-4, vmax=10)
+                      )
+        ax.set_xlim(15, 35)
+        cb = fig.colorbar(cp, ax=ax)
+        cb.set_label('log f(x, p$_x$) [a.u.]', fontsize=40)
+        cb.ax.tick_params(labelsize=30)
+        ax.tick_params(labelsize=30)
+        ax.set_xlabel('x (microns)', fontsize=40)
+        ax.set_ylabel('p$_x$ (m$_e$ c)', fontsize=40)
+
+        ########### ground truth ###############
+        cp2 = ax2.imshow(gt_og.T,
+                         interpolation='nearest',
+                         cmap='YlGnBu',
+                         origin='lower',
+                         extent=extent,
+                         aspect='auto',
+                         norm=LogNorm(vmin=1e-4, vmax=10)
+                        )
+        cb2 = fig.colorbar(cp2, ax=ax2)
+        cb2.set_label('log f(x, p$_x$) [a.u.]', fontsize=40)
+        cb2.ax.tick_params(labelsize=30)
+        ax2.set_xlim(15, 35)
+        ax2.tick_params(labelsize=30)
+        ax2.set_xlabel('x (microns)', fontsize=40)
+        ax2.set_ylabel('p$_x$ (m$_e$ c)', fontsize=40)
+        ax2.set_title('t$_{{{}}}$ = {} fs'.format(tt+1, time_og[tt+1]), fontsize=40)
+
+        ########### l1 error ###############
+        cp3 = ax3.imshow(l1.T,
+                         interpolation='nearest',
+                         cmap='YlGnBu',
+                         origin='lower',
+                         extent=extent,
+                         aspect='auto',
+                         norm=LogNorm(vmin=1e-4, vmax=10)
+                        )
+        cb3 = fig.colorbar(cp3, ax=ax3)
+        cb3.set_label('L$_1$', fontsize=40)
+        cb3.ax.tick_params(labelsize=30)
+        ax3.set_xlim(15, 35)
+        ax3.tick_params(labelsize=30)
+        ax3.set_xlabel('x (microns)', fontsize=40)
+        ax3.set_ylabel('p$_x$ (m$_e$ c)', fontsize=40)
+        ax3.set_title('Rel L$_1$ = {} \nRel L$_2$ = {}'.format(np.round(rel_l1, 5), np.round(test_l2_full,5)), fontsize=40)
+        plt.tight_layout()
+        if save_path:
+            if interpolation:
+                plot_title = save_path + 'Interp_vs_gt_d{}_t_{}.png'.format(d,time_og[tt+1])
+            else:
+                plot_title = save_path + 'Pred_vs_gt_d{}_t_{}.png'.format(d,time_og[tt+1])
+            plt.savefig(plot_title, bbox_inches='tight')
+        # plt.show()
+        plt.close()
+
+def ensure_path_exists(path):
+    """Ensure that a directory exists. If it doesn't, create it."""
+    if not os.path.exists(path):
+        os.makedirs(path)
