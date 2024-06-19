@@ -335,7 +335,7 @@ def main():
 
     print(epochs, learning_rate, scheduler_step, scheduler_gamma)
 
-    path = 'ns_fourier_ion_400_400_'+str(ntrain)+'_ep' + str(epochs) + '_m' + str(modes) + '_w' + str(width) + '_' + str(wandb.run.id)
+    path = 'ns_fourier_ion_400_400_'+str(ntrain)+'_ep' + str(epochs) + '_m' + str(modes) + '_w' + str(width) + '_' + str(run_id)
     path_model = '/bigdata/hplsim/aipp/Jeyhun/fno_main/fno_hemera/fnomodel/'+path
     path_train_err = '/bigdata/hplsim/aipp/Jeyhun/fno_main/fno_hemera/fnoresults/'+path+'train.txt'
     path_test_err = '/bigdata/hplsim/aipp/Jeyhun/fno_main/fno_hemera/fnoresults/'+path+'test.txt'
@@ -679,6 +679,21 @@ def main():
     scipy.io.savemat('/bigdata/hplsim/aipp/Jeyhun/fno_main/fno_hemera/pred_data/'+path+'.mat', data)
 
 
+    # load models dictionary
+    loaded_npzfile = np.load('/bigdata/hplsim/aipp/Jeyhun/fno_main/fno_hemera/models_dictionary.npz', allow_pickle=True)
+
+    models_dictionary = {key: loaded_npzfile[key].item() for key in loaded_npzfile}
+
+    # add the new trained model to dictionary
+    new_item = {
+        run_id: hyperparameter_defaults
+    }
+
+    # Add the new item to the dictionary
+    models_dictionary.update(new_item)
+
+    # Save the updated dictionary back to the NPZ file
+    np.savez('/bigdata/hplsim/aipp/Jeyhun/fno_main/fno_hemera/models_dictionary.npz', **models_dictionary)
 
     # test_index = np.random.choice(100, ntest, replace = False)
     # print('test_index',test_index)
