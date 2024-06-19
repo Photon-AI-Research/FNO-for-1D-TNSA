@@ -521,6 +521,7 @@ def main(modes, width, tr_slice):
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=scheduler_step, gamma=scheduler_gamma)
 
     myloss = LpLoss(size_average=False)
+    myloss_l1 = LpLoss(size_average=False, p=1)
     y_normalizer.cuda()
     min_valid_loss = np.inf
 
@@ -536,9 +537,17 @@ def main(modes, width, tr_slice):
     test_time = end_test - begin_test
     print(test_time)
 
+    # add x, px, time information for plotting
+    data_og = loadmat("/bigdata/hplsim/aipp/Jeyhun/barnard/DIR/ssd/jeru889b-Smilei-ws/ion_N_100_0.5_10_400_400.mat")
+
+    x = data_og['x']*0.8/(2*np.pi)
+    px = data_og['px']
+    time_og = data_og['time']*2.667/(2*np.pi)
+
     train_l2_step = 0
     train_l2_full = 0
     l2_full_all = torch.zeros(ntrain)
+    l1_full_all = torch.zeros(ntrain)
     index = 0
     with torch.no_grad():
         for xx, yy, train_id in train_loader:
@@ -566,6 +575,9 @@ def main(modes, width, tr_slice):
             yy = torch.exp(yy) - 2
             pred = torch.exp(pred) - 2
 
+            pred[pred < 0] = 0
+            yy[yy < 0] = 0
+
             # print(pred.shape)
             # reshaped = pred.reshape(-1, T)
             # reshaped2 = pred.reshape(batch_size, -1)
@@ -573,7 +585,9 @@ def main(modes, width, tr_slice):
 
             # train_l2_step += loss.item()
             l2_full = myloss(pred.reshape(batch_size, -1), yy.reshape(batch_size, -1)).item()
+            l1_full = myloss_l1(pred.reshape(batch_size, -1), yy.reshape(batch_size, -1)).item()
             l2_full_all[index] = l2_full
+            l1_full_all[index] = l1_full
             # train_l2_full += l2_full.item()
             index +=1
 
@@ -593,12 +607,16 @@ def main(modes, width, tr_slice):
     test_l2_full = 0
     test_l2_full_all = torch.zeros(ntest)
     test_interp_full_all = torch.zeros(ntest)
+    test_l1_full_all = torch.zeros(ntest)
+    test_interp_l1_full_all = torch.zeros(ntest)
 
     index = 0
     with torch.no_grad():
         for xx, yy, test_id in test_loader:
             # print('index', index)
             # print('test_id', test_id)
+            # test target thickness
+            d_test_id = d[test_id]
             loss = 0
             xx = xx.to(device)
             yy = yy.to(device)
@@ -621,6 +639,35 @@ def main(modes, width, tr_slice):
             # print('pred', pred.shape)
             pred = y_normalizer.decode(pred)
             pred = torch.exp(pred) - 2
+
+            pred[pred < 0] = 0
+            yy[yy < 0] = 0
+
+            # test_l2_step += loss.item()
+            test_l2_full = myloss(pred.reshape(batch_size, -1), yy.reshape(batch_size, -1)).item()
+            test_l1_full = myloss_l1(pred.reshape(batch_size, -1), yy.reshape(batch_size, -1)).item()
+
+            test_l2_full_all[index] = test_l2_full
+            test_l1_full_all[index] = test_l1_full
+            index +=1
+            
+            # save test plots
+            save_path = (
+            "/bigdata/hplsim/aipp/Jeyhun/fno_main/fno_hemera/plots/{}_{}_{}_{}/{}/".format(
+                config["modes"],config["width"],config["tr_slice"],config["model_checkpoint"], d_test_id))
+        
+            ensure_path_exists(save_path)
+
+            plot_phase_space(
+                pred.squeeze().cpu(),
+                yy.squeeze().cpu(),
+                d_test_id,
+                x,
+                px,
+                time_og,
+                save_path = save_path,
+
+            )
 
             prev_id, next_id = find_training_neighbors(test_id, train_index)
             # print('test_id', test_id)
@@ -647,10 +694,19 @@ def main(modes, width, tr_slice):
 
                 d_prev_id = d[prev_id]
                 d_next_id = d[next_id]
-                d_test_id = d[test_id]
 
                 train_u_prev_id = train_u_prev_id.unsqueeze(0).to(device)
                 train_u_next_id = train_u_next_id.unsqueeze(0).to(device)
+
+                # denormalise
+                train_u_prev_id = y_normalizer.decode(train_u_prev_id)
+                train_u_prev_id = torch.exp(train_u_prev_id) - 2
+
+                train_u_next_id = y_normalizer.decode(train_u_next_id)
+                train_u_next_id = torch.exp(train_u_next_id) - 2
+
+                train_u_prev_id[train_u_prev_id < 0] = 0
+                train_u_next_id[train_u_next_id < 0] = 0
                 # print('train_u_prev_id', train_u_prev_id.shape)
 
                 begin_interp = time.time()
@@ -665,21 +721,41 @@ def main(modes, width, tr_slice):
                 # interpolated_pred = interpolated_pred.unsqueeze(0)
                 # print('interpolated_pred', interpolated_pred.shape)
 
-                # yy = y_normalizer.decode(yy)
-                interpolated_pred = y_normalizer.decode(interpolated_pred)
-                # yy = torch.exp(yy) - 2
-                interpolated_pred = torch.exp(interpolated_pred) - 2
+                # # yy = y_normalizer.decode(yy)
+                # interpolated_pred = y_normalizer.decode(interpolated_pred)
+                # # yy = torch.exp(yy) - 2
+                # interpolated_pred = torch.exp(interpolated_pred) - 2
 
                 interp_full = myloss(interpolated_pred.reshape(batch_size, -1), yy.reshape(batch_size, -1)).item()
+                interp_l1_full = myloss_l1(interpolated_pred.reshape(batch_size, -1), yy.reshape(batch_size, -1)).item()
                 test_interp_full_all[index] = interp_full
+                test_interp_l1_full_all[index] = interp_l1_full
 
-            # test_l2_step += loss.item()
-            test_l2_full = myloss(pred.reshape(batch_size, -1), yy.reshape(batch_size, -1)).item()
+                save_interp_path = (
+                "/bigdata/hplsim/aipp/Jeyhun/fno_main/fno_hemera/plots/interp/{}/{}/".format(
+                    config["tr_slice"], d_test_id))
 
-            test_l2_full_all[index] = test_l2_full
-            index +=1
+                if os.path.exists(save_interp_path):
+                    print(f"Directory {save_interp_path} exists, skipping the code.")
+                else:
+                    print(f"Directory {save_interp_path} does not exist, proceeding with the code.")
+
+                    ensure_path_exists(save_interp_path)
+
+                    plot_phase_space(
+                    interpolated_pred.squeeze().cpu(),
+                    yy.squeeze().cpu(),
+                    d_test_id,
+                    x,
+                    px,
+                    time_og,
+                    save_path = save_interp_path,
+                    interpolation = True,
+
+                )
+
     
-    return l2_full_all, test_l2_full_all, test_interp_full_all, dtrain, dtest, checkpoint
+    return l2_full_all, test_l2_full_all, test_interp_full_all, l1_full_all, test_l1_full_all, test_interp_l1_full_all, dtrain, dtest, checkpoint
 
 
 if __name__ == "__main__":
@@ -694,12 +770,15 @@ if __name__ == "__main__":
             print('lifting_dim', lifting_dim)
             for train_size in train_sizes:
                 print('train_size', train_size)
-                l2_full_all, test_l2_full_all, test_interp_full_all, dtrain, dtest, checkpoint = main(mode, lifting_dim, train_size)
+                l2_full_all, test_l2_full_all, test_interp_full_all, l1_full_all, test_l1_full_all, test_interp_l1_full_all, dtrain, dtest, checkpoint = main(mode, lifting_dim, train_size)
                 
                 results = {
                     'l2_full_all': l2_full_all,
                     'test_l2_full_all': test_l2_full_all,
                     'test_interp_full_all': test_interp_full_all,
+                    'l1_full_all': l1_full_all,
+                    'test_l1_full_all': test_l1_full_all,
+                    'test_interp_l1_full_all': test_interp_l1_full_all,
                     'dtrain': dtrain,
                     'dtest': dtest,
                     'checkpoint': 'checkpoint',
