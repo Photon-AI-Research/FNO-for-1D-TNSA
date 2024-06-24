@@ -28,6 +28,7 @@ from torch.nn.functional import normalize
 import torch.fft
 import time
 import argparse
+import datetime
 
 def main():
 
@@ -116,6 +117,7 @@ def main():
         tr_ratio = 0.8,
         std = 1,
         tr_slice = 100,
+        constant = 1.4494363314830412e-05,
         )
 
     args_dict = vars(args)
@@ -366,9 +368,9 @@ def main():
     # print('test_u.shape', (test_u.shape))
 
     # log transformation
-    train_a = torch.log(train_a + 2)
-    test_a = torch.log(test_a + 2)
-    train_u = torch.log(train_u + 2)
+    train_a = torch.log(train_a + 1 + config["constant"])
+    test_a = torch.log(test_a + 1 + config["constant"])
+    train_u = torch.log(train_u + 1 + config["constant"])
 
     print('train_a shape', train_a.shape)
 
@@ -444,8 +446,8 @@ def main():
             yy = y_normalizer.decode(yy)
             pred = y_normalizer.decode(pred)
 
-            yy = torch.exp(yy) - 2
-            pred = torch.exp(pred) - 2
+            yy = torch.exp(yy) - 1 - config["constant"]
+            pred = torch.exp(pred) - 1 - config["constant"]
 
             train_l2_step += loss.item()
             l2_full = myloss(pred.reshape(batch_size, -1), yy.reshape(batch_size, -1))
@@ -477,7 +479,7 @@ def main():
                     xx = torch.cat((xx[..., step:], im), dim=-1)
 
                 pred = y_normalizer.decode(pred)
-                pred = torch.exp(pred) - 2
+                pred = torch.exp(pred) - 1 - config["constant"]
 
                 test_l2_step += loss.item()
                 test_l2_full += myloss(pred.reshape(batch_size, -1), yy.reshape(batch_size, -1)).item()
@@ -576,7 +578,7 @@ def main():
 
             ###me
             pred = y_normalizer.decode(pred)
-            pred = torch.exp(pred) - 2
+            pred = torch.exp(pred) - 1 - config["constant"]
             ###me
 
             test_l2_step += loss.item()
@@ -683,6 +685,17 @@ def main():
     loaded_npzfile = np.load('/bigdata/hplsim/aipp/Jeyhun/fno_main/fno_hemera/models_dictionary.npz', allow_pickle=True)
 
     models_dictionary = {key: loaded_npzfile[key].item() for key in loaded_npzfile}
+
+    # Get current date, hour, and minute
+    current_datetime = datetime.datetime.now()
+    current_date = current_datetime.date()
+    current_hour = current_datetime.hour
+    current_minute = current_datetime.minute
+
+    # Update dictionary
+    hyperparameter_defaults['date'] = str(current_date)
+    hyperparameter_defaults['hour'] = current_hour
+    hyperparameter_defaults['minute'] = current_minute
 
     # add the new trained model to dictionary
     new_item = {
